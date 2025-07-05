@@ -1,0 +1,22 @@
+[all:children]
+deb-servers
+red-servers
+
+[deb-servers]
+server1 ansible_host=4.235.112.229
+
+
+[red-servers]
+server2 ansible_host=1.1.1.1
+
+[all:vars]
+ 
+ansible_password=Arzhanova15_
+
+[deb-servers:vars]
+ansible_user=asureuser
+
+
+[red-servers:vars]
+ansible_user=asureuser2
+
