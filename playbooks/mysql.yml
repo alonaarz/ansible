@@ -1,0 +1,78 @@
+- name: Install MySQL for production ready server
+  user: ubuntu
+  hosts: all
+  become: True
+  become_user: root
+  vars:
+    MySQL_root_pass: StrongPass123!        # ← ТУТ ЗАДАЙ СВІЙ ПАРОЛЬ
+    WP_user_pass: WpUserPass123!           # ← Пароль для користувача wpuser
+
+  tasks:
+    - name: Set MySQL root password before installing
+      debconf: 
+        name: "mysql-server"
+        question: "mysql-server/root_password"
+        value: "{{ MySQL_root_pass }}"
+        vtype: "password"
+
+    - name: Confirm MySQL root password before installing
+      debconf: 
+        name: "mysql-server"
+        question: "mysql-server/root_password_again"
+        value: "{{ MySQL_root_pass }}"
+        vtype: "password"
+
+    - name: Install MySQL server and dependencies
+      apt:
+        package:
+          - mysql-server
+          - mysql-client
+          - python3-mysqldb     # ← правильний пакет
+        state: present
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    - name: Delete anonymous MySQL users
+      mysql_user:
+        name: ''
+        state: absent
+        login_user: root
+        login_password: "{{ MySQL_root_pass }}"
+
+    - name: Secure root access only from allowed hosts
+      mysql_user:
+        name: root
+        host: "{{ item }}"
+        password: "{{ MySQL_root_pass }}"
+        login_user: root
+        login_password: "{{ MySQL_root_pass }}"
+      loop:
+        - 127.0.0.1
+        - localhost
+        - ::1
+        - ''
+
+    - name: Remove test database
+      mysql_db:
+        name: test
+        state: absent
+        login_user: root
+        login_password: "{{ MySQL_root_pass }}"
+
+    - name: Create WordPress database
+      mysql_db:
+        name: wordpress
+        state: present
+        login_user: root
+        login_password: "{{ MySQL_root_pass }}"
+
+    - name: Create wpuser with privileges
+      mysql_user:
+        name: wpuser
+        password: "{{ WP_user_pass }}"
+        priv: 'wordpress.*:ALL'
+        state: present
+        login_user: root
+        login_password: "{{ MySQL_root_pass }}"
+

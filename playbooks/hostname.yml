@@ -1,5 +1,5 @@
 ---
-  - hosts: all
+  - hosts: '{{ HOST }}'
     become: yes
     tasks:
       - name: get server hostname
