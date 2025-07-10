@@ -1,0 +1,185 @@
+---
+- name: Install and configure WordPress on Ubuntu 22.04 LAMP
+  hosts: all
+  become: true
+  vars_files:
+    - vars/default.yml
+
+  tasks:
+
+    - name: Ensure aptitude is installed
+      apt:
+        name: aptitude
+        state: latest
+        update_cache: yes
+      tags: [ system ]
+
+    - name: Install LAMP packages
+      apt:
+        name:
+          - apache2
+          - mysql-server
+          - php
+          - php-mysql
+          - libapache2-mod-php
+          - python3-pymysql
+        state: latest
+        update_cache: yes
+      tags: [ system ]
+
+    - name: Install additional PHP extensions
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop: "{{ php_modules }}"
+      tags: [ system ]
+
+    - name: Create document root
+      file:
+        path: "/var/www/{{ http_host }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+      tags: [ apache ]
+
+    - name: Set up Apache VirtualHost
+      template:
+        src: "files/apache.conf.j2"
+        dest: "/etc/apache2/sites-available/{{ http_conf }}"
+      notify: Reload Apache
+      tags: [ apache ]
+
+    - name: Enable required Apache modules
+      ansible.builtin.apache2_module:
+        name: rewrite
+        state: present
+      notify: Reload Apache
+      tags: [ apache ]
+
+    - name: Enable new Apache site
+      command: a2ensite {{ http_conf }}
+      notify: Reload Apache
+      tags: [ apache ]
+
+    - name: Disable default Apache site
+      command: a2dissite 000-default.conf
+      notify: Restart Apache
+      tags: [ apache ]
+
+    # MySQL Setup
+    - name: Set MySQL root password
+      mysql_user:
+        name: root
+        password: "{{ mysql_root_password }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+      tags: [ mysql ]
+
+    - name: Remove anonymous users
+      mysql_user:
+        name: ''
+        host_all: yes
+        state: absent
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+      tags: [ mysql ]
+
+    - name: Remove test database
+      mysql_db:
+        name: test
+        state: absent
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+      tags: [ mysql ]
+
+    - name: Create WordPress database
+      mysql_db:
+        name: "{{ mysql_db }}"
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+      tags: [ mysql ]
+
+    - name: Create WordPress DB user
+      mysql_user:
+        name: "{{ mysql_user }}"
+        password: "{{ mysql_password }}"
+        priv: "{{ mysql_db }}.*:ALL"
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+      tags: [ mysql ]
+
+    # UFW (optional)
+    - name: Allow HTTP through firewall
+      ufw:
+        rule: allow
+        port: "{{ http_port }}"
+        proto: tcp
+      when: http_port is defined
+      tags: [ firewall ]
+
+    # WordPress setup
+    - name: Download and unpack WordPress
+      unarchive:
+        src: https://wordpress.org/latest.tar.gz
+        dest: "/var/www/{{ http_host }}"
+        remote_src: yes
+        creates: "/var/www/{{ http_host }}/wordpress"
+      tags: [ wordpress ]
+
+    - name: Set ownership for WordPress files
+      file:
+        path: "/var/www/{{ http_host }}"
+        state: directory
+        recurse: yes
+        owner: www-data
+        group: www-data
+      tags: [ wordpress ]
+
+    - name: Set permissions for directories
+      find:
+        paths: "/var/www/{{ http_host }}/wordpress"
+        file_type: directory
+      register: wp_dirs
+
+    - name: Set directory permissions
+      file:
+        path: "{{ item.path }}"
+        mode: '0750'
+      loop: "{{ wp_dirs.files }}"
+      tags: [ wordpress ]
+
+    - name: Set permissions for files
+      find:
+        paths: "/var/www/{{ http_host }}/wordpress"
+        file_type: file
+      register: wp_files
+
+    - name: Apply file permissions
+      file:
+        path: "{{ item.path }}"
+        mode: '0640'
+      loop: "{{ wp_files.files }}"
+      tags: [ wordpress ]
+
+    - name: Configure wp-config.php
+      template:
+        src: "files/wp-config.php.j2"
+        dest: "/var/www/{{ http_host }}/wordpress/wp-config.php"
+        owner: www-data
+        group: www-data
+        mode: '0640'
+      tags: [ wordpress ]
+
+  handlers:
+    - name: Reload Apache
+      service:
+        name: apache2
+        state: reloaded
+
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted
+

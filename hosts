@@ -1,0 +1,2 @@
+[wordpress_servers]
+51.120.120.16 ansible_user=asureuser ansible_ssh_pass=Arzhanova15_
