@@ -1,0 +1,2 @@
+ansible_user: nginx 
+ansible_ssh_pass: Arzhanova15_

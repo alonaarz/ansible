@@ -1,0 +1,7 @@
+[ubuntu_servers]
+srv1 ansible_host=20.251.168.98
+
+[redhat_servers]
+#srv2 ansible_host=51.20.54.220
+
+
